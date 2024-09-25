@@ -28,7 +28,7 @@
     },
     "repo": "",
     "title": "Logseq to Latex",
-    "author": "AnyonicFugue and GJC",
-    "description": "Regex snippets in latex.",
+    "author": "GJC",
+    "description": "Generate latex file for current page.",
     "effect": true
 }
