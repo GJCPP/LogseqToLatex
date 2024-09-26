@@ -18,6 +18,8 @@ let filePrefix = "";
 let fileSuffix = "";
 let noIndentEnv = [];
 let user_settings = {};
+let content_regex_rules = {};
+let regexRules = [];
 /*
 * The user's settings. E.g. : if (user_settings.enableDollarBracket) { ... }
 */
@@ -38,7 +40,6 @@ async function setup({ defaultLocale = DEFAULT_LOCALE, builtinTranslations, }) {
 }
 
 
-let regexRules = [];
 
 function cleanUp() {
     const appContainer = parent.document.getElementById("app-container");
@@ -89,7 +90,19 @@ async function getUserRules() {
     filePrefix = config.prefix;
     fileSuffix = config.suffix;
     noIndentEnv = config.no_indent_env;
-
+    content_regex_rules = config.content_regex_rules;
+    for (const ruleGroup in content_regex_rules) {
+        for (const rule of content_regex_rules[ruleGroup]) {
+            regexRules.push({
+                trigger: new RegExp(`${rule.trigger}$`),
+                repl: rule.replacement,
+                head: rule.head,
+                tail: rule.tail,
+                pushfront: rule.pushfront,
+                pushback: rule.pushback
+            });
+        }
+    }
     return ret;
 }
 
@@ -107,15 +120,14 @@ async function reloadUserRules() {
     }
 }
 
-async function addLeadingTabs(str) {
-    let lines = str.split('\n');
+async function addLeadingTabs(contentArray) {
     let result = [];
     let indent = 0;
     let inSection = false;
     let inSubSection = false;
     let noIndent = 0;
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
+    for (let i = 0; i < contentArray.length; i++) {
+        let line = contentArray[i];
         for (const env of noIndentEnv) {
             if (line.trim().startsWith(env.start)) {
                 noIndent++;
@@ -159,19 +171,20 @@ async function addLeadingTabs(str) {
             }
         }
     }
-    return result.join('\n');
+    return result;
 }
 
 async function explorePageBlocksTree(tree, depth) {
-    let ret = tree.content;
-    let head = "";
-    let tail = "";
+    console.log(tree.content);
+    let result = [];
+    let head = [];
+    let tail = [];
 
     // Match all markdown images and replace with counter + format
     const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
     let listOfAssets = await logseq.Assets.listFilesOfCurrentGraph();
 
-    ret = ret.replace(imageRegex, (match, alt, url) => {
+    let content = tree.content.replace(imageRegex, (match, alt, url) => {
         // Truncate URL to the last slash and check if it matches any asset
         const truncatedUrl = url.substring(url.lastIndexOf('/') + 1);
         const matchingAsset = listOfAssets.find(asset => asset.path.endsWith(truncatedUrl));
@@ -179,72 +192,58 @@ async function explorePageBlocksTree(tree, depth) {
             url = matchingAsset.path; // Use the full matching asset path
         }
         url = url.replace(/\\/g, "/");
-        let replacement = `\\begin{figure}[h!]\\centering
+        return `\\begin{figure}[h!]\\centering
         \\includegraphics[width=0.7\\textwidth]{${url}}
         \\end{figure}`;
-        return replacement;
     });
 
     // Apply regex rules and replace matches
     for (const rule of regexRules) {
         let lastIndex = 0;
-        let newRet = '';
-        ret.replace(rule.trigger, (match, ...args) => {
+        let newContent = '';
+        content.replace(rule.trigger, (match, ...args) => {
             const index = args[args.length - 2];
-            newRet += ret.slice(lastIndex, index);
+            newContent += content.slice(lastIndex, index);
             // Handle replacement, considering $1, $2, etc. in the string
             let replacement = rule.repl;
             replacement = replacement.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
             
             // Add head and tail if they exist
             if (rule.head && rule.head.length > 0) {
-                head += rule.head + "\n";
+                head.push(rule.head);
             }
             if (rule.tail && rule.tail.length > 0) {
-                tail = rule.tail + "\n" + tail;
+                tail.unshift(rule.tail);
             }
-            newRet += replacement;
+            newContent += replacement;
             lastIndex = index + match.length;
             
             return match; // This return value is not used
         });
         
         // Add any remaining text
-        newRet += ret.slice(lastIndex);
-        ret = newRet;
-    }
-    if (ret.length === 0 || ret[ret.length - 1] !== '\n') {
-        ret += "\n";
+        newContent += content.slice(lastIndex);
+        content = newContent;
     }
 
-    let middle = "";
+    result.push(...head);
+    result.push(...content.split('\n'));
+
     for (const child of tree.children) {
-        middle += await explorePageBlocksTree(child, depth + 1);
+        result.push(...await explorePageBlocksTree(child, depth + 1));
     }
 
-    head = head.trim();
-    ret = ret.trim();
-    middle = middle.trim();
-    tail = tail.trim();
+    result.push(...tail);
 
-    // Ensure the last character of ret, middle, and tail is a newline
-    if (head.length > 0 && head[head.length - 1] !== '\n') {
-        head += '\n';
+    // Remove empty lines at the start and end of the result
+    while (result.length > 0 && result[0].trim() === '') {
+        result.shift();
     }
-    if (ret.length > 0 && ret[ret.length - 1] !== '\n') {
-        ret += '\n';
+    while (result.length > 0 && result[result.length - 1].trim() === '') {
+        result.pop();
     }
-    if (middle.length > 0 && middle[middle.length - 1] !== '\n') {
-        middle += '\n';
-    }
-    if (tail.length > 0 && tail[tail.length - 1] !== '\n') {
-        tail += '\n';
-    }
-    ret = head + ret + middle + tail;
-    if (ret.length > 0 && ret[ret.length - 1] !== '\n') {
-        ret += '\n';
-    }
-    return ret;
+
+    return result;
 }
 
 async function saveToFile(content, filename) {
@@ -277,11 +276,11 @@ async function handleToLatex() {
     console.log("ToLatex");
     let blocks = await logseq.Editor.getCurrentPageBlocksTree();
     let root = {children : blocks, content : ""};
-    let ret = await explorePageBlocksTree(root, 0);
-    ret = await addLeadingTabs(ret);
+    let contentArray = await explorePageBlocksTree(root, 0);
+    contentArray = await addLeadingTabs(contentArray);
     const currentPage = await logseq.Editor.getCurrentPage();
     const filename = `${currentPage.name}.tex`;
-    saveToFile(ret, filename);
+    saveToFile(contentArray.join('\n'), filename);
 }
 
 async function main() {
