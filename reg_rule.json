@@ -3,7 +3,7 @@
 	"\\usepackage{minted}",
 	"\\usepackage[utf8]{inputenc}",
 	"\\usepackage{latexsym,amsfonts,amssymb,amsthm,amsmath,mathtools}",
-	"",
+	"\\usepackage{hyperref}",
 	"",
 	"",
 	"\\setlength{\\parindent}{0in}",
@@ -14,6 +14,14 @@
 	"\\setlength{\\headheight}{18pt}",
 	"\\theoremstyle{definition}",
 	"\\newtheorem{problem}{Problem}",
+	"\\newtheorem{proposition}{Proposition}",
+	"\\newtheorem{theorem}{Theorem}",
+	"\\newtheorem{corollary}{Corollary}",
+	"\\newtheorem{conjecture}{Conjecture}",
+	"\\newtheorem{lemma}{Lemma}",
+	"\\newtheorem{example}{Example}",
+	"\\newtheorem{remark}{Remark}",
+	"\\newtheorem{definition}{Definition}",
 	"\\newtheorem*{answer}{Answer}",
 	"",
 	"",
@@ -33,6 +41,9 @@
 	
   "suffix" : [
     "",
+    "",
+    "",
+    "",
 	"\\vspace{2in} %Leave more space for comments!",
 	"",
 	"",
@@ -42,48 +53,141 @@
 	"\\end{document}",
 	""],
 	
-	
-	
+  "_comment_protect_env": [
+	"The ranges are used to protect the content from being changed by the regex rules.",
+	"However, indent will still be added."
+  ],
+  "protect_env": [
+	{
+		"range": "\\\\begin\\{minted\\}([\\s\\S]*?)\\\\end\\{minted\\}"
+	},
+	{
+		"range": "\\\\begin\\{equation\\*?\\}([\\s\\S]*?)\\\\end\\{equation\\*?\\}"
+	},
+	{
+		"range": "\\$\\$([\\s\\S]+?)\\$\\$"
+	},
+	{
+		"range": "\\\\begin\\{aligned\\}([\\s\\S]*?)\\\\end\\{aligned\\}"
+	},
+	{
+		"range": "\\\\\\[(\\s\\S*?)\\\\\\]"
+	}
+  ],
+
+  "_comment_regex_rules": [
+	"regex rules are used to match the content and replace it with the replacement.",
+	"trigger : the regex used to match the content",
+	"replacement : the replacement for the matched content.",
+		"By default, the content will not be changed. (which makes it's possible to be matched by other rules)",
+	"head : the content added before the matched content, in different line",
+	"tail : the content added after the matched content and its child blocks, in different line",
+	"pushfront : the content added before the matched content, in the same line",
+	"pushback : the content added after the matched content, in the same line"
+  ],
   "regex_rules": {
+	  
+
+	"special_keyword": [
+	  {
+		  "trigger": "&",
+		  "replacement": "\\&"
+	  }
+	],
+
+	"markdown_cmd": [
+		{
+			"trigger": "\\*\\*(.*?)\\*\\*",
+			"replacement": "\\textbf{$1}"
+		},
+		{
+			"trigger": "\\*(.*?)\\*",
+			"replacement": "\\emph{$1}"
+		}
+	],
 
     "section": [
       {
-        "trigger": "^## (.*)$",
-        "replacement": "\\section{$1}"
-      },
-      {
-        "trigger": "^### Problem$",
+        "trigger": "### Problem",
         "replacement": "",
 		"head": "\\begin{problem}",
 		"tail": "\\end{problem}"
       },
       {
-        "trigger": "^### Proof$",
+        "trigger": "### Proof",
         "replacement": "",
 		"head": "\\begin{proof}",
 		"tail": "\\end{proof}"
       },
       {
-        "trigger": "^### Answer$",
+        "trigger": "### Answer",
         "replacement": "",
 		"head": "\\begin{answer}",
 		"tail": "\\end{answer}"
       },
       {
-        "trigger": "^### (.*)$",
+        "trigger": "### (.*)",
         "replacement": "\\subsection{$1}"
-      }
+      },
+      {
+        "trigger": "## (.*)",
+        "replacement": "\\section{$1}"
+      },
+	  {
+		"trigger": "# (.*)",
+		"replacement": "\\section{$1}"
+	  }
     ],
 	
 	"theorem": [
       {
-        "trigger": "^\\*\\*Proof.\\*\\*$",
-        "replacement": "\\begin{proof}"
-      },
+		"trigger": "^Conjecture. ",
+		"head": "\\begin{conjecture}",
+		"replacement": "",
+		"tail": "\\end{conjecture}"
+	  },
       {
-        "trigger": "^\\*\\*Q.E.D.\\*\\*$",
-        "replacement": "\\end{proof}"
-      }
+		"trigger": "^Proposition. ",
+		"head": "\\begin{proposition}",
+		"replacement": "",
+		"tail": "\\end{proposition}"
+	  },
+	  {
+		"trigger": "^Theorem. ",
+		"head": "\\begin{theorem}",
+		"replacement": "",
+		"tail": "\\end{theorem}"
+	  },
+	  {
+		"trigger": "^Corollary. ",
+		"head": "\\begin{corollary}",
+		"replacement": "",
+		"tail": "\\end{corollary}"
+	  },
+	  {
+		"trigger": "^Lemma. ",
+		"head": "\\begin{lemma}",
+		"replacement": "",
+		"tail": "\\end{lemma}"
+	  },
+	  {
+		"trigger": "^Example. ",
+		"head": "\\begin{example}",
+		"replacement": "",
+		"tail": "\\end{example}"
+	  },
+	  {
+		"trigger": "^Remark. ",
+		"head": "\\begin{remark}",
+		"replacement": "",
+		"tail": "\\end{remark}"
+	  },
+	  {
+		"trigger": "^Definition. ",
+		"head": "\\begin{definition}",
+		"replacement": "",
+		"tail": "\\end{definition}"
+	  }
 	],
 	
 	"code": [
@@ -91,9 +195,51 @@
         "trigger": "^```(.+)([\\s\\S]*)```$",
 	    "replacement": "\\begin{minted}{$1} $2\\end{minted}"
       }
+	],
+
+	"logseq_cmd": [
+	  {
+		"trigger": "\\[\\[(.+?)\\]\\]",
+		"replacement": "\\textbf{$1}"
+	  },
+	  {
+		"trigger": "\\[(.+?)\\]\\(\\(\\((.+?)\\)\\)\\)",
+		"replacement": "\\textbf{$1}"
+	  },
+	  {
+		"trigger": "\\(\\((.+?)\\)\\)",
+		"replacement": "\\textbf{$1}"
+	  },
+	  {
+		"trigger": "\\[(.*?)\\]\\((.+?)\\)",
+		"replacement": "\\href{$2}{$1}"
+	  },
+	  {
+		"trigger": "collapsed:: [A-Za-z0-9-_]+",
+		"replacement": ""
+	  },
+	  {
+		"trigger": "id:: [0-9a-f-_]+",
+		"replacement": ""
+	  },
+	  {
+		"trigger": "#\\+[A-Za-z0-9-_]+",
+		"replacement": ""
+	  },
+	  {
+		"trigger": "background-color:: (.+)",
+		"pushfront": "\\textcolor{$1}{",
+		"replacement": "",
+		"pushback": "}"
+	  }
 	]
   },
 
+  "_comment_content_regex_rules": [
+	"content_regex_rules are used to match the content and replace it with the replacement.",
+	"This is now specialized for logseq order-list, which do not have leading signal.",
+	"The field is just those of regex_rules."
+  ],
   "content_regex_rules": {
     "number_list": [
       {
@@ -101,16 +247,40 @@
 		"replacement": "",
 		"head": "\\begin{enumerate}",
 		"pushfront": "\\item ",
-		"pushback": "",
 		"tail": "\\end{enumerate}"
       }
     ]
   },
   
+  "_comment_no_indent_env": [
+	"no_indent_env is used to prevent the indent added by the regex rules",
+	"The start and end of the env are used to protect the content from being changed by the regex rules",
+	"The example is \\begin{minted}{cpp} and \\end{minted}, wherein you put your c++ code."
+  ],
   "no_indent_env" : [
 	{
-		"start": "\\begin{minted}",
-		"end": "\\end{minted}"
+		"start": "\\\\begin\\{minted\\}",
+		"end": "\\\\end\\{minted\\}"
+	}
+  ],
+  
+  "_comment_no_par_env": [
+	"no_par_env is used to prevent the paragraph added by the regex rules",
+	"The examples are enumerate and itemize.",
+	"Note that the \\par will be only added to the end of block. So content (e.g. math formula) in the same block is safe."
+  ],
+  "no_par_env" : [
+	{
+		"start": "\\\\begin\\{minted\\}",
+		"end": "\\\\end\\{minted\\}"
+	},
+	{
+		"start": "\\\\begin\\{enumerate\\}",
+		"end": "\\\\end\\{enumerate\\}"
+	},
+	{
+		"start": "\\\\begin\\{itemize\\}",
+		"end": "\\\\end\\{itemize\\}"
 	}
   ]
 }

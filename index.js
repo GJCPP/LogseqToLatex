@@ -16,10 +16,7 @@ let locale$1 = DEFAULT_LOCALE;
 let translations = {};
 let filePrefix = "";
 let fileSuffix = "";
-let noIndentEnv = [];
 let user_settings = {};
-let contentRegexRules = [];
-let regexRules = [];
 /*
 * The user's settings. E.g. : if (user_settings.enableDollarBracket) { ... }
 */
@@ -52,7 +49,6 @@ function cleanUp() {
 }
 
 async function getUserRules() {
-    // const settings = logseq.settings;
     const file = await fetch('./reg_rule.json')
     var config;
 
@@ -77,10 +73,12 @@ async function getUserRules() {
             let rule = config.regex_rules[group][i];
 
             ret.push({
-                trigger: new RegExp(`${rule.trigger}$`),
+                trigger: new RegExp(`${rule.trigger}`, 'g'),
                 repl: rule.replacement,
                 head: rule.head,
-                tail: rule.tail
+                tail: rule.tail,
+                pushfront: rule.pushfront,
+                pushback: rule.pushback
             });
         }
 
@@ -89,12 +87,23 @@ async function getUserRules() {
 
     filePrefix = config.prefix;
     fileSuffix = config.suffix;
-    noIndentEnv = config.no_indent_env;
+    noIndentEnv = config.no_indent_env.map(env => ({
+        start: new RegExp(env.start, 'g'),
+        end: new RegExp(env.end, 'g')
+    }));
+    noParEnv = config.no_par_env.map(env => ({
+        start: new RegExp(env.start, 'g'),
+        end: new RegExp(env.end, 'g')
+    }));
+    protectEnv = config.protect_env.map(env => ({
+        range: new RegExp(env.range, 'g')
+    }));
     let groupOfRules = config.content_regex_rules;
+    let contentRules = [];
     for (const ruleGroup in groupOfRules) {
         for (const rule of groupOfRules[ruleGroup]) {
-            contentRegexRules.push({
-                trigger: new RegExp(`${rule.trigger}$`),
+            contentRules.push({
+                trigger: new RegExp(`${rule.trigger}`, 'g'),
                 repl: rule.replacement,
                 head: rule.head,
                 tail: rule.tail,
@@ -103,24 +112,55 @@ async function getUserRules() {
             });
         }
     }
-    return ret;
+    return { regexRules: ret, contentRegexRules: contentRules, noIndentEnv: noIndentEnv, noParEnv: noParEnv, protectEnv: protectEnv };
 }
 
 async function reloadUserRules() {
-    const userRules = await getUserRules();
-
-    if (userRules.length > 0) {
-        regexRules = [
-            ...userRules
-        ];
-    }
+    const config = await getUserRules();
 
     if (is_debugging) {
-        console.log("User rules:", regexRules);
+        console.log("User config", config);
     }
+
+    return config;
 }
 
-async function addLeadingTabs(contentArray) {
+function getProtectedRanges(content, config) {
+    const protectedRanges = [];
+    for (const env of config.protectEnv) {
+        let match;
+        while ((match = env.range.exec(content)) !== null) {
+            protectedRanges.push({
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+    }
+    return protectedRanges;
+}
+
+function isProtected(index, length, protectedRanges) {
+    for (const range of protectedRanges) {
+        if (!(index >= range.end && index + length <= range.start)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function matchNonProtected(regex, content, protectedRanges) {
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+        const index = match.index;
+        const length = match[0].length;
+        if (!isProtected(index, length, protectedRanges)) {
+            return match;
+        }
+    }
+    return null;
+}
+
+async function addLeadingTabs(contentArray, config) {
     let result = [];
     let indent = 0;
     let inSection = false;
@@ -128,14 +168,17 @@ async function addLeadingTabs(contentArray) {
     let noIndent = 0;
     for (let i = 0; i < contentArray.length; i++) {
         let line = contentArray[i];
-        for (const env of noIndentEnv) {
-            if (line.trim().startsWith(env.start)) {
+        let protectedRanges = getProtectedRanges(line, config);
+        let match;
+        for (const env of config.noIndentEnv) {
+            if (env.start.test(line)) {
                 noIndent++;
-                result.push("");
                 break;
             }
         }
-        if (line.trim().startsWith('\\section')) {
+        if (line.trim().startsWith("\\chapter")) {
+            indent = 0;
+        } else if (line.trim().startsWith('\\section')) {
             if (inSection) {
                 result.push(""); // Add a blank line to separate sections
             }
@@ -154,19 +197,31 @@ async function addLeadingTabs(contentArray) {
         } else if (line.trim().startsWith('\\subsubsection')) {
             result.push("\t\t" + `${line}`);
             indent = 3;
-        } else if (line.trim().startsWith('\\begin')) {
+        } else if (match = matchNonProtected(/^\\begin\{.*?\}$/, line, protectedRanges)) {
+            // Check if we can find the corresponding \end{...}
+            const beginMatch = match[0];
+            const envName = beginMatch.match(/\\begin\{(.*?)\}/)[1];
+            const endPattern = new RegExp(`\\\\end\\{${envName}\\}`);
+            const hasMatchingEnd = contentArray.slice(i + 1).some(line => endPattern.test(line));
+            
             result.push("\t".repeat(noIndent <= 0 ? indent : 0) + `${line}`);
-            indent++;
-        } else if (line.trim().startsWith('\\end')) {
+
+            if (!hasMatchingEnd) {
+                // If no matching \end{...} is found, increase indent
+                indent++;
+            }
+        } else if (match = matchNonProtected(/^\\end\{.*?\}$/, line, protectedRanges)) {
             indent--;
+            if (indent < 0) {
+                indent = 0;
+            }
             result.push("\t".repeat(noIndent <= 0 ? indent : 0) + `${line}`);
         } else {
             result.push("\t".repeat(noIndent <= 0 ? indent : 0) + `${line}`);
         }
-        for (const env of noIndentEnv) {
-            if (line.trim().startsWith(env.end)) {
+        for (const env of config.noIndentEnv) {
+            if (env.end.test(line)) {
                 noIndent--;
-                result.push("");
                 break;
             }
         }
@@ -174,23 +229,52 @@ async function addLeadingTabs(contentArray) {
     return result;
 }
 
-function applyRegexRules(content, head, tail) {
-    for (const rule of regexRules) {
+function applyRegexRules(content, head, tail, config) {
+    // Extract protected ranges
+    const protectedRanges = getProtectedRanges(content, config);
+
+
+    for (const rule of config.regexRules) {
+        let front = "";
+        let back = "";
         let lastIndex = 0;
         let newContent = '';
         content.replace(rule.trigger, (match, ...args) => {
+            // console.log("content", content);
+            // console.log("match", match);
             const index = args[args.length - 2];
+
+            // Check if the current match is within any protected range
+            const isProtectedRange = isProtected(index, match.length, protectedRanges);
+
+            if (isProtectedRange) {
+                // If protected, don't apply the rule
+                newContent += content.slice(lastIndex, index + match.length);
+                lastIndex = index + match.length;
+                return match;
+            }
+            
             newContent += content.slice(lastIndex, index);
             // Handle replacement, considering $1, $2, etc. in the string
             let replacement = rule.repl;
-            replacement = replacement.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+            if (replacement || replacement === "") {
+                replacement = replacement.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+            } else {
+                replacement = match;
+            }
             
             // Add head and tail if they exist
             if (rule.head && rule.head.length > 0) {
-                head.push(rule.head);
+                head.push(rule.head.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
             }
             if (rule.tail && rule.tail.length > 0) {
-                tail.unshift(rule.tail);
+                tail.unshift(rule.tail.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
+            }
+            if (rule.pushfront && rule.pushfront.length > 0) {
+                front += rule.pushfront.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+            }
+            if (rule.pushback && rule.pushback.length > 0) {
+                back += rule.pushback.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
             }
             newContent += replacement;
             lastIndex = index + match.length;
@@ -200,14 +284,17 @@ function applyRegexRules(content, head, tail) {
         
         // Add any remaining text
         newContent += content.slice(lastIndex);
-        content = newContent;
+        if (front.length > 0 || back.length > 0) {
+            newContent = newContent.trim();
+        }
+        content = front + newContent + back;
     }
     return content;
 }
 
-function applyContentRegexRules(contentArray, head, tail) {
+function applyContentRegexRules(contentArray, head, tail, config) {
     let newContentArray = contentArray.slice();
-    for (const rule of contentRegexRules) {
+    for (const rule of config.contentRegexRules) {
         let matched = false;
         let nextContentArray = [];
         for (const content of newContentArray) {
@@ -215,38 +302,59 @@ function applyContentRegexRules(contentArray, head, tail) {
             let back = "";
             let lastIndex = 0;
             let newContent = '';
+            let protectedRanges = getProtectedRanges(content, config);
             content.replace(rule.trigger, (match, ...args) => {
                 const index = args[args.length - 2];
                 newContent += content.slice(lastIndex, index);
+
+                // Check if the current match is within any protected range
+                const isProtectedRange = isProtected(index, match.length, protectedRanges);
+
+                // If protected, don't apply the rule
+                if (isProtectedRange) {
+                    newContent += content.slice(lastIndex, index + match.length);
+                    lastIndex = index + match.length;
+                    return match;
+                }
+
                 // Handle replacement, considering $1, $2, etc. in the string
                 let replacement = rule.repl;
-                if (replacement) {
+                if (replacement || replacement === "") {
                     replacement = replacement.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
                 } else {
-                    replacement = "";
+                    replacement = match;
+                }
+                
+                if (rule.pushfront && rule.pushfront.length > 0) {
+                    front += rule.pushfront.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+                }
+                if (rule.pushback && rule.pushback.length > 0) {
+                    back += rule.pushback.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
                 }
                 
                 // Add head and tail if they exist
+                let needTrim = false;
                 if (!matched && rule.head && rule.head.length > 0) {
-                    head.push(rule.head);
+                    head.push(rule.head.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
+                    needTrim = true;
                 }
                 if (!matched && rule.tail && rule.tail.length > 0) {
-                    tail.unshift(rule.tail);
+                    tail.unshift(rule.tail.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
+                    needTrim = true;
                 }
-                if (rule.pushfront) {
-                    front = rule.pushfront + front;
-                }
-                if (rule.pushback) {
-                    back = back + rule.pushback;
+                if (needTrim) {
+                    replacement = replacement.trim();
                 }
                 matched = true;
-                newContent += replacement;
                 lastIndex = index + match.length;
                 return match; // This return value is not used
             });
         
             // Add any remaining text
             newContent += content.slice(lastIndex);
+            if (front.length > 0 || back.length > 0) {
+                newContent = newContent.trim();
+            }
             nextContentArray.push(front + newContent + back);
         }
         newContentArray = nextContentArray;
@@ -254,7 +362,7 @@ function applyContentRegexRules(contentArray, head, tail) {
     return newContentArray;
 }
 
-async function explorePageBlocksTree(tree, depth) {
+async function explorePageBlocksTree(tree, depth, config) {
     let result = [];
     let head = [];
     let tail = [];
@@ -273,22 +381,28 @@ async function explorePageBlocksTree(tree, depth) {
         url = url.replace(/\\/g, "/");
         return `\\begin{figure}[h!]\\centering\n\n\\includegraphics[width=0.7\\textwidth]{${url}}\n\\end{figure}`;
     });
-    content = applyRegexRules(content, head, tail);
+    content = applyRegexRules(content, head, tail, config);
 
     let middle = [];
     let headForMiddle = [];
     let tailForMiddle = [];
     for (const child of tree.children) {
-        middle.push(...await explorePageBlocksTree(child, depth + 1));
+        middle.push(...await explorePageBlocksTree(child, depth + 1, config));
     }
-    middle = applyContentRegexRules(middle, headForMiddle, tailForMiddle);
+    middle = applyContentRegexRules(middle, headForMiddle, tailForMiddle, config);
 
+    if (tree.children.length != 0 && !content.endsWith("\\par")) {
+        content += "\\par";
+    }
     result.push(...head);
     result.push(content);
     result.push(...headForMiddle);
     result.push(...middle);
     result.push(...tailForMiddle);
     result.push(...tail);
+    if (tree.children.length != 0 && !result[result.length - 1].endsWith("\\par")) {
+        result[result.length - 1] += "\\par";
+    }
 
     // Remove empty lines at the start and end of the result
     while (result.length > 0 && result[0].trim() === '') {
@@ -312,6 +426,39 @@ async function removeEmptyLines(contentArray) {
     return nonEmptyLines;
 }
 
+async function removeNoParEnv(contentArray, config) {
+    let result = [];
+    let noPar = 0;
+    for (const line of contentArray) {
+        for (const env of config.noParEnv) {
+            if (env.start.test(line)) {
+                noPar++;
+                break;
+            }
+        }
+        if (noPar <= 0) {
+            result.push(line);
+        } else {
+            result.push(line.replace(/\\par/g, ""));
+        }
+        
+        for (const env of config.noParEnv) {
+            if (env.end.test(line)) {
+                noPar--;
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+async function removeDuplicatePar(contentArray) {
+    let result = [];
+    let str = contentArray.join('\n');
+    str = str.replace(/\\par\s*\\par/g, "\\par\n");
+    result = str.split('\n');
+    return result;
+}
 
 async function saveToFile(content, filename) {
     // Create a Blob with the content
@@ -341,11 +488,18 @@ async function saveToFile(content, filename) {
 
 async function handleToLatex() {
     console.log("LogseqToLatex working...");
+    let config = await reloadUserRules();
     let blocks = await logseq.Editor.getCurrentPageBlocksTree();
     let root = {children : blocks, content : ""};
-    let contentArray = await explorePageBlocksTree(root, 0);
+    let contentArray = await explorePageBlocksTree(root, 0, config);
+
+
+    contentArray = await removeDuplicatePar(contentArray);
+    contentArray = await removeNoParEnv(contentArray, config);
+    contentArray = await addLeadingTabs(contentArray, config);
     contentArray = await removeEmptyLines(contentArray);
-    contentArray = await addLeadingTabs(contentArray);
+    
+    
     const currentPage = await logseq.Editor.getCurrentPage();
     const filename = `${currentPage.name}.tex`;
     saveToFile(contentArray.join('\n'), filename);
@@ -360,7 +514,6 @@ async function main() {
     logseq.provideModel({
         handleToLatex
     });
-    reloadUserRules();
     logseq.App.registerUIItem("toolbar", {
         key: "ToLatex",
         template: `
