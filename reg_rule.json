@@ -1,0 +1,116 @@
+{
+  "prefix" : ["\\documentclass[12pt]{article}",
+	"\\usepackage{minted}",
+	"\\usepackage[utf8]{inputenc}",
+	"\\usepackage{latexsym,amsfonts,amssymb,amsthm,amsmath,mathtools}",
+	"",
+	"",
+	"",
+	"\\setlength{\\parindent}{0in}",
+	"\\setlength{\\oddsidemargin}{0in}",
+	"\\setlength{\\textwidth}{6.5in}",
+	"\\setlength{\\textheight}{8.8in}",
+	"\\setlength{\\topmargin}{0in}",
+	"\\setlength{\\headheight}{18pt}",
+	"\\theoremstyle{definition}",
+	"\\newtheorem{problem}{Problem}",
+	"\\newtheorem*{answer}{Answer}",
+	"",
+	"",
+	"",
+	"\\title{YOUR TITLE HERE}",
+	"",
+	"\\author{YOU NAME HERE}", 
+	"",
+	"",
+	"",
+	"\\begin{document}",
+	"\\maketitle",
+	"\\vspace{0.5in}",
+	""],
+	
+	
+	
+  "suffix" : [
+    "",
+	"\\vspace{2in} %Leave more space for comments!",
+	"",
+	"",
+	"",
+	"",
+	"",
+	"\\end{document}",
+	""],
+	
+	
+	
+  "regex_rules": {
+
+    "section": [
+      {
+        "trigger": "^## (.*)$",
+        "replacement": "\\section{$1}"
+      },
+      {
+        "trigger": "^### Problem$",
+        "replacement": "",
+		"head": "\\begin{problem}",
+		"tail": "\\end{problem}"
+      },
+      {
+        "trigger": "^### Proof$",
+        "replacement": "",
+		"head": "\\begin{proof}",
+		"tail": "\\end{proof}"
+      },
+      {
+        "trigger": "^### Answer$",
+        "replacement": "",
+		"head": "\\begin{answer}",
+		"tail": "\\end{answer}"
+      },
+      {
+        "trigger": "^### (.*)$",
+        "replacement": "\\subsection{$1}"
+      }
+    ],
+	
+	"theorem": [
+      {
+        "trigger": "^\\*\\*Proof.\\*\\*$",
+        "replacement": "\\begin{proof}"
+      },
+      {
+        "trigger": "^\\*\\*Q.E.D.\\*\\*$",
+        "replacement": "\\end{proof}"
+      }
+	],
+	
+	"code": [
+      {
+        "trigger": "^```(.+)([\\s\\S]*)```$",
+	    "replacement": "\\begin{minted}{$1} $2\\end{minted}"
+      }
+	]
+  },
+
+  "content_regex_rules": {
+    "number_list": [
+      {
+        "trigger": "logseq\\.order-list-type:: number",
+		"replacement": "",
+		"head": "\\begin{enumerate}",
+		"pushfront": "\\item ",
+		"pushback": "",
+		"tail": "\\end{enumerate}"
+      }
+    ]
+  },
+  
+  "no_indent_env" : [
+	{
+		"start": "\\begin{minted}",
+		"end": "\\end{minted}"
+	}
+  ]
+}
