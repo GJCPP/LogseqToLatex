@@ -71,14 +71,14 @@ async function getUserRules() {
 
         for (let i = 0; i < config.regex_rules[group].length; i++) {
             let rule = config.regex_rules[group][i];
-
             ret.push({
                 trigger: new RegExp(`${rule.trigger}`, 'g'),
                 repl: rule.replacement,
                 head: rule.head,
                 tail: rule.tail,
                 pushfront: rule.pushfront,
-                pushback: rule.pushback
+                pushback: rule.pushback,
+                overwrite: rule.overwrite
             });
         }
 
@@ -108,7 +108,8 @@ async function getUserRules() {
                 head: rule.head,
                 tail: rule.tail,
                 pushfront: rule.pushfront,
-                pushback: rule.pushback
+                pushback: rule.pushback,
+                overwrite: rule.overwrite
             });
         }
     }
@@ -128,20 +129,22 @@ async function reloadUserRules() {
 function getProtectedRanges(content, config) {
     const protectedRanges = [];
     for (const env of config.protectEnv) {
-        let match;
-        while ((match = env.range.exec(content)) !== null) {
-            protectedRanges.push({
-                start: match.index,
-                end: match.index + match[0].length
-            });
-        }
+        content.replace(env.range, (match, ...args) => {
+            const index = args[args.length - 2];
+            const length = match.length;
+            if (isProtected(index, length, protectedRanges)) {
+                return match; // Keep the match unchanged if it's protected
+            }
+            protectedRanges.push({ start: index, end: index + length });
+            return match; // Keep the match unchanged in the content
+        });
     }
     return protectedRanges;
 }
 
 function isProtected(index, length, protectedRanges) {
     for (const range of protectedRanges) {
-        if (!(index >= range.end && index + length <= range.start)) {
+        if (!(index >= range.end || index + length <= range.start)) {
             return true;
         }
     }
@@ -247,7 +250,7 @@ function applyRegexRules(content, head, tail, config) {
             // Check if the current match is within any protected range
             const isProtectedRange = isProtected(index, match.length, protectedRanges);
 
-            if (isProtectedRange) {
+            if (isProtectedRange && !rule.overwrite) {
                 // If protected, don't apply the rule
                 newContent += content.slice(lastIndex, index + match.length);
                 lastIndex = index + match.length;
@@ -293,11 +296,10 @@ function applyRegexRules(content, head, tail, config) {
 }
 
 function applyContentRegexRules(contentArray, head, tail, config) {
-    let newContentArray = contentArray.slice();
+    let newContentArray = [];
     for (const rule of config.contentRegexRules) {
         let matched = false;
-        let nextContentArray = [];
-        for (const content of newContentArray) {
+        for (const content of contentArray) {
             let front = "";
             let back = "";
             let lastIndex = 0;
@@ -306,13 +308,11 @@ function applyContentRegexRules(contentArray, head, tail, config) {
             content.replace(rule.trigger, (match, ...args) => {
                 const index = args[args.length - 2];
                 newContent += content.slice(lastIndex, index);
-
                 // Check if the current match is within any protected range
                 const isProtectedRange = isProtected(index, match.length, protectedRanges);
-
                 // If protected, don't apply the rule
-                if (isProtectedRange) {
-                    newContent += content.slice(lastIndex, index + match.length);
+                if (isProtectedRange && !rule.overwrite) {
+                    newContent += content.slice(index, index + match.length);
                     lastIndex = index + match.length;
                     return match;
                 }
@@ -345,6 +345,7 @@ function applyContentRegexRules(contentArray, head, tail, config) {
                 if (needTrim) {
                     replacement = replacement.trim();
                 }
+                newContent += replacement;
                 matched = true;
                 lastIndex = index + match.length;
                 return match; // This return value is not used
@@ -355,11 +356,16 @@ function applyContentRegexRules(contentArray, head, tail, config) {
             if (front.length > 0 || back.length > 0) {
                 newContent = newContent.trim();
             }
-            nextContentArray.push(front + newContent + back);
+            newContentArray.push(front + newContent + back);
         }
-        newContentArray = nextContentArray;
+        
+        // Only update contentArray if a match was found
+        if (matched) {
+            contentArray = newContentArray;
+            newContentArray = [];
+        }
     }
-    return newContentArray;
+    return contentArray;
 }
 
 async function explorePageBlocksTree(tree, depth, config) {
@@ -390,6 +396,7 @@ async function explorePageBlocksTree(tree, depth, config) {
         middle.push(...await explorePageBlocksTree(child, depth + 1, config));
     }
     middle = applyContentRegexRules(middle, headForMiddle, tailForMiddle, config);
+
 
     if (tree.children.length != 0 && !content.endsWith("\\par")) {
         content += "\\par";

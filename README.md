@@ -1,6 +1,6 @@
-# logseq-latex-snippets
+# logseq-to-latex
 
-Support for snippets in inline math and display math.
+Generate latex code from current logseq page.
 
 ## Demo
 
@@ -8,5 +8,6 @@ Support for snippets in inline math and display math.
 
 ## Functionalities
 
-- Customizable regex snippets to autocomplete latex formulas
-- Auto pair dollar signs
+- Image form translation : `![](./assets/1.png)` -> `\includegraphics[width=0.5\textwidth]{1.png}`
+- Title translation : `# Hello` -> `\section{Hello}`, etc.
+- Math form translation : `$\int_0^1 f(x) dx$` -> `\int_{0}^{1} f(x) dx`

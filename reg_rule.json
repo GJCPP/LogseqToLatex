@@ -55,7 +55,9 @@
 	
   "_comment_protect_env": [
 	"The ranges are used to protect the content from being changed by the regex rules.",
-	"However, indent will still be added."
+	"To be more exact, this means regex rules will not match the protected content.",
+	"However, indent will still be added, and pushfront/pushback will also be added.",
+	"Also, rules with field `overwrite==true` will ignore protection."
   ],
   "protect_env": [
 	{
@@ -66,6 +68,9 @@
 	},
 	{
 		"range": "\\$\\$([\\s\\S]+?)\\$\\$"
+	},
+	{
+		"range": "\\$([\\s\\S]+?)\\$"
 	},
 	{
 		"range": "\\\\begin\\{aligned\\}([\\s\\S]*?)\\\\end\\{aligned\\}"
@@ -86,7 +91,6 @@
 	"pushback : the content added after the matched content, in the same line"
   ],
   "regex_rules": {
-	  
 
 	"special_keyword": [
 	  {
@@ -111,79 +115,85 @@
         "trigger": "### Problem",
         "replacement": "",
 		"head": "\\begin{problem}",
-		"tail": "\\end{problem}"
+		"tail": "\\end{problem}",
+		"overwrite": true
       },
       {
         "trigger": "### Proof",
         "replacement": "",
 		"head": "\\begin{proof}",
-		"tail": "\\end{proof}"
+		"tail": "\\end{proof}",
+		"overwrite": true
       },
       {
         "trigger": "### Answer",
         "replacement": "",
 		"head": "\\begin{answer}",
-		"tail": "\\end{answer}"
+		"tail": "\\end{answer}",
+		"overwrite": true
       },
       {
         "trigger": "### (.*)",
-        "replacement": "\\subsection{$1}"
+        "replacement": "\\subsection{$1}",
+		"overwrite": true
       },
       {
         "trigger": "## (.*)",
-        "replacement": "\\section{$1}"
+        "replacement": "\\section{$1}",
+		"overwrite": true
       },
 	  {
 		"trigger": "# (.*)",
-		"replacement": "\\section{$1}"
+		"replacement": "\\section{$1}",
+		"overwrite": true
 	  }
     ],
 	
 	"theorem": [
       {
-		"trigger": "^Conjecture. ",
+		"trigger": "^Conjecture\\. ",
 		"head": "\\begin{conjecture}",
 		"replacement": "",
 		"tail": "\\end{conjecture}"
 	  },
       {
-		"trigger": "^Proposition. ",
+		"trigger": "^Proposition\\. ",
 		"head": "\\begin{proposition}",
 		"replacement": "",
 		"tail": "\\end{proposition}"
 	  },
 	  {
-		"trigger": "^Theorem. ",
+		"trigger": "^Theorem\\. ",
 		"head": "\\begin{theorem}",
 		"replacement": "",
 		"tail": "\\end{theorem}"
 	  },
 	  {
-		"trigger": "^Corollary. ",
+		"trigger": "^Corollary\\. ",
 		"head": "\\begin{corollary}",
 		"replacement": "",
 		"tail": "\\end{corollary}"
 	  },
 	  {
-		"trigger": "^Lemma. ",
+		"trigger": "^Lemma\\. ",
 		"head": "\\begin{lemma}",
 		"replacement": "",
 		"tail": "\\end{lemma}"
 	  },
 	  {
-		"trigger": "^Example. ",
+		"trigger": "^Example\\. ",
 		"head": "\\begin{example}",
 		"replacement": "",
 		"tail": "\\end{example}"
 	  },
 	  {
-		"trigger": "^Remark. ",
+		"trigger": "^Remark\\. ",
 		"head": "\\begin{remark}",
 		"replacement": "",
 		"tail": "\\end{remark}"
 	  },
 	  {
-		"trigger": "^Definition. ",
+		"trigger": "^Definition\\. ",
 		"head": "\\begin{definition}",
 		"replacement": "",
 		"tail": "\\end{definition}"
@@ -247,7 +257,8 @@
 		"replacement": "",
 		"head": "\\begin{enumerate}",
 		"pushfront": "\\item ",
-		"tail": "\\end{enumerate}"
+		"tail": "\\end{enumerate}",
+		"overwrite": true
       }
     ]
   },
