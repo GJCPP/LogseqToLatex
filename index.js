@@ -200,20 +200,20 @@ async function addLeadingTabs(contentArray, config) {
         } else if (line.trim().startsWith('\\subsubsection')) {
             result.push("\t\t" + `${line}`);
             indent = 3;
-        } else if (match = matchNonProtected(/^\\begin\{.*?\}$/, line, protectedRanges)) {
+        } else if (match = matchNonProtected(/\\begin\{.*?\}/, line, protectedRanges)) {
             // Check if we can find the corresponding \end{...}
             const beginMatch = match[0];
             const envName = beginMatch.match(/\\begin\{(.*?)\}/)[1];
             const endPattern = new RegExp(`\\\\end\\{${envName}\\}`);
-            const hasMatchingEnd = contentArray.slice(i + 1).some(line => endPattern.test(line));
-            
+            const hasMatchingEnd = endPattern.test(contentArray[i]);
+
             result.push("\t".repeat(noIndent <= 0 ? indent : 0) + `${line}`);
 
             if (!hasMatchingEnd) {
                 // If no matching \end{...} is found, increase indent
                 indent++;
             }
-        } else if (match = matchNonProtected(/^\\end\{.*?\}$/, line, protectedRanges)) {
+        } else if (match = matchNonProtected(/\\end\{.*?\}/, line, protectedRanges)) {
             indent--;
             if (indent < 0) {
                 indent = 0;
