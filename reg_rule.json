@@ -107,6 +107,14 @@
 		{
 			"trigger": "\\*(.*?)\\*",
 			"replacement": "\\emph{$1}"
+		},
+	    {
+			"trigger": "^```(.+)([\\s\\S]*)```$",
+			"replacement": "\\begin{minted}{$1} $2\\end{minted}"
+	    },
+		{
+			"trigger": "\\`([^`]+?)\\`",
+			"replacement": "\\textbf{$1}"
 		}
 	],
 
@@ -198,13 +206,6 @@
 		"replacement": "",
 		"tail": "\\end{definition}"
 	  }
-	],
-	
-	"code": [
-      {
-        "trigger": "^```(.+)([\\s\\S]*)```$",
-	    "replacement": "\\begin{minted}{$1} $2\\end{minted}"
-      }
 	],
 
 	"logseq_cmd": [
