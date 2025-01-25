@@ -387,6 +387,11 @@ async function explorePageBlocksTree(tree, depth, config) {
         url = url.replace(/\\/g, "/");
         return `\\begin{figure}[h!]\\centering\n\n\\includegraphics[width=0.7\\textwidth]{${url}}\n\\end{figure}`;
     });
+    
+    if (content == "") {
+        content = "\\par";
+    }
+
     content = applyRegexRules(content, head, tail, config);
 
     let middle = [];
@@ -398,8 +403,8 @@ async function explorePageBlocksTree(tree, depth, config) {
     middle = applyContentRegexRules(middle, headForMiddle, tailForMiddle, config);
 
 
-    if (tree.children.length != 0 && !content.endsWith("\\par")) {
-        content += "\\par";
+    if (tree.children.length != 0 && !content.endsWith("\\par") && !content.endsWith("}")) {
+        // content += "\\par";
     }
     result.push(...head);
     result.push(content);
@@ -407,8 +412,8 @@ async function explorePageBlocksTree(tree, depth, config) {
     result.push(...middle);
     result.push(...tailForMiddle);
     result.push(...tail);
-    if (tree.children.length != 0 && !result[result.length - 1].endsWith("\\par")) {
-        result[result.length - 1] += "\\par";
+    if (tree.children.length != 0 && !result[result.length - 1].endsWith("\\par") && !result[result.length - 1].endsWith("}")) {
+        // result[result.length - 1] += "\\par";
     }
 
     // Remove empty lines at the start and end of the result

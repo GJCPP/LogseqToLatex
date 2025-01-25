@@ -53,7 +53,7 @@
 	"\\end{document}",
 	""],
 	
-  "_comment_protect_env": [
+  "COMMENT on protect_env ##########################################################": [
 	"The ranges are used to protect the content from being changed by the regex rules.",
 	"To be more exact, this means regex rules will not match the protected content.",
 	"However, indent will still be added, and pushfront/pushback will also be added.",
@@ -80,7 +80,7 @@
 	}
   ],
 
-  "_comment_regex_rules": [
+  "COMMENT on regex_rules ##########################################################": [
 	"regex rules are used to match the content and replace it with the replacement.",
 	"trigger : the regex used to match the content",
 	"replacement : the replacement for the matched content.",
@@ -246,7 +246,7 @@
 	]
   },
 
-  "_comment_content_regex_rules": [
+  "COMMENT on content_regex_rules ########################################################################################": [
 	"content_regex_rules are used to match the content and replace it with the replacement.",
 	"This is now specialized for logseq order-list, which do not have leading signal.",
 	"The field is just those of regex_rules."
@@ -264,7 +264,7 @@
     ]
   },
   
-  "_comment_no_indent_env": [
+  "COMMENT on no_indent_env ###############################################################################################": [
 	"no_indent_env is used to prevent the indent added by the regex rules",
 	"The start and end of the env are used to protect the content from being changed by the regex rules",
 	"The example is \\begin{minted}{cpp} and \\end{minted}, wherein you put your c++ code."
@@ -276,7 +276,7 @@
 	}
   ],
   
-  "_comment_no_par_env": [
+  "COMMENT on no_par_env ##################################################################################################": [
 	"no_par_env is used to prevent the paragraph added by the regex rules",
 	"The examples are enumerate and itemize.",
 	"Note that the \\par will be only added to the end of block. So content (e.g. math formula) in the same block is safe."
