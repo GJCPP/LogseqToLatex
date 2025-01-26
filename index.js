@@ -76,8 +76,8 @@ async function getUserRules() {
                 repl: rule.replacement,
                 head: rule.head,
                 tail: rule.tail,
-                pushfront: rule.pushfront,
-                pushback: rule.pushback,
+                lineBeginning: rule.lineBeginning,
+                lineEnd: rule.lineEnd,
                 overwrite: rule.overwrite
             });
         }
@@ -98,7 +98,7 @@ async function getUserRules() {
     protectEnv = config.protect_env.map(env => ({
         range: new RegExp(env.range, 'g')
     }));
-    let groupOfRules = config.content_regex_rules;
+    let groupOfRules = config.number_list_rules;
     let contentRules = [];
     for (const ruleGroup in groupOfRules) {
         for (const rule of groupOfRules[ruleGroup]) {
@@ -107,13 +107,13 @@ async function getUserRules() {
                 repl: rule.replacement,
                 head: rule.head,
                 tail: rule.tail,
-                pushfront: rule.pushfront,
-                pushback: rule.pushback,
+                lineBeginning: rule.lineBeginning,
+                lineEnd: rule.lineEnd,
                 overwrite: rule.overwrite
             });
         }
     }
-    return { regexRules: ret, contentRegexRules: contentRules, noIndentEnv: noIndentEnv, noParEnv: noParEnv, protectEnv: protectEnv };
+    return { regexRules: ret, numberListRule: contentRules, noIndentEnv: noIndentEnv, noParEnv: noParEnv, protectEnv: protectEnv };
 }
 
 async function reloadUserRules() {
@@ -128,8 +128,8 @@ async function reloadUserRules() {
 
 function getProtectedRanges(content, config) {
     const protectedRanges = [];
-    for (const env of config.protectEnv) {
-        content.replace(env.range, (match, ...args) => {
+    for (const env of config.protectEnv) { // Enumerate all the protected environments
+        content.replace(env.range, (match, ...args) => { // This is a lambda function that is called for each match of the regex and return the content to replace the match.
             const index = args[args.length - 2];
             const length = match.length;
             if (isProtected(index, length, protectedRanges)) {
@@ -233,13 +233,12 @@ async function addLeadingTabs(contentArray, config) {
 }
 
 function applyRegexRules(content, head, tail, config) {
-    // Extract protected ranges
-    const protectedRanges = getProtectedRanges(content, config);
 
+    const protectedRanges = getProtectedRanges(content, config); // Some content are protected from being modified, including mathmode formulas, codeblocks, etc.  This function returns an array of objects, each object represents a protected range.
 
     for (const rule of config.regexRules) {
-        let front = "";
-        let back = "";
+        let lineFront = ""; // The content that should be added at the beginning of the current line
+        let lineBack = "";  // The content that should be added at the end of the current line
         let lastIndex = 0;
         let newContent = '';
         content.replace(rule.trigger, (match, ...args) => {
@@ -251,7 +250,7 @@ function applyRegexRules(content, head, tail, config) {
             const isProtectedRange = isProtected(index, match.length, protectedRanges);
 
             if (isProtectedRange && !rule.overwrite) {
-                // If protected, don't apply the rule
+                // If the content is protected and the protection is not overwritten, don't apply the rule
                 newContent += content.slice(lastIndex, index + match.length);
                 lastIndex = index + match.length;
                 return match;
@@ -273,11 +272,11 @@ function applyRegexRules(content, head, tail, config) {
             if (rule.tail && rule.tail.length > 0) {
                 tail.unshift(rule.tail.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
             }
-            if (rule.pushfront && rule.pushfront.length > 0) {
-                front += rule.pushfront.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+            if (rule.lineBeginning && rule.lineBeginning.length > 0) {
+                lineFront += rule.lineBeginning.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
             }
-            if (rule.pushback && rule.pushback.length > 0) {
-                back += rule.pushback.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+            if (rule.lineEnd && rule.lineEnd.length > 0) {
+                lineBack += rule.lineEnd.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
             }
             newContent += replacement;
             lastIndex = index + match.length;
@@ -287,24 +286,27 @@ function applyRegexRules(content, head, tail, config) {
         
         // Add any remaining text
         newContent += content.slice(lastIndex);
-        if (front.length > 0 || back.length > 0) {
+        if (lineFront.length > 0 || lineBack.length > 0) {
             newContent = newContent.trim();
         }
-        content = front + newContent + back;
+        content = lineFront + newContent + lineBack;
     }
     return content;
 }
 
-function applyContentRegexRules(contentArray, head, tail, config) {
+function parseNumberedList(contentArray, head, tail, config) {
+
+    // Parse numbered list in Logseq to enumeration in LaTeX
+
     let newContentArray = [];
-    for (const rule of config.contentRegexRules) {
+    for (const rule of config.numberListRule) {
         let matched = false;
         for (const content of contentArray) {
-            let front = "";
-            let back = "";
-            let lastIndex = 0;
-            let newContent = '';
-            let protectedRanges = getProtectedRanges(content, config);
+            let lineFront = ""; // The content that should be added at the beginning of each line
+            let lineBack = "";  // The content that should be added at the end of each line
+            let lastIndex = 0; // The index of last match
+            let newContent = ''; // The new content after applying the rule
+            let protectedRanges = getProtectedRanges(content, config); // Some content are protected from being modified, including mathmode formulas, codeblocks, etc.
             content.replace(rule.trigger, (match, ...args) => {
                 const index = args[args.length - 2];
                 newContent += content.slice(lastIndex, index);
@@ -325,11 +327,11 @@ function applyContentRegexRules(contentArray, head, tail, config) {
                     replacement = match;
                 }
                 
-                if (rule.pushfront && rule.pushfront.length > 0) {
-                    front += rule.pushfront.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+                if (rule.lineBeginning && rule.lineBeginning.length > 0) {
+                    lineFront += rule.lineBeginning.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
                 }
-                if (rule.pushback && rule.pushback.length > 0) {
-                    back += rule.pushback.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
+                if (rule.lineEnd && rule.lineEnd.length > 0) {
+                    lineBack += rule.lineEnd.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
                 }
                 
                 // Add head and tail if they exist
@@ -353,10 +355,10 @@ function applyContentRegexRules(contentArray, head, tail, config) {
         
             // Add any remaining text
             newContent += content.slice(lastIndex);
-            if (front.length > 0 || back.length > 0) {
+            if (lineFront.length > 0 || lineBack.length > 0) {
                 newContent = newContent.trim();
             }
-            newContentArray.push(front + newContent + back);
+            newContentArray.push(lineFront + newContent + lineBack);
         }
         
         // Only update contentArray if a match was found
@@ -368,29 +370,41 @@ function applyContentRegexRules(contentArray, head, tail, config) {
     return contentArray;
 }
 
-async function explorePageBlocksTree(tree, depth, config) {
+async function explorePageBlocksTree(tree, depth, config) { // Blocks of Logseq are organized in a tree structure. This function recursively explores the tree and converts each block to LaTeX.
     let result = [];
-    let head = [];
-    let tail = [];
+    let head = []; // Head is the content that should be added before the current block, e.g. "\begin{enumerate}"
+    let tail = []; // Tail is the content that should be added after the current block, e.g. "\end{enumerate}"
 
-    // Match all markdown images and replace with counter + format
-    const imageRegex = /!\[(.*?)\]\((.*?)\)/g;
-    let listOfAssets = await logseq.Assets.listFilesOfCurrentGraph();
+    // Handle images by replacing them with LaTeX figure environments
+
+    const imageRegex = /!\[(.*?)\]\((.*?)\)/g; // Match all markdown images and replace with counter + format
+    let listOfAssets = await logseq.Assets.listFilesOfCurrentGraph(); // Get the list of assets in the current graph
 
     let content = tree.content.replace(imageRegex, (match, alt, url) => {
-        // Truncate URL to the last slash and check if it matches any asset
+        // In Logseq, the URL of an image is the relative path, e.g. "../assets/image1.png".
+        // However, the LaTeX figure environment requires the full path, e.g. "/Users/username/Documents/logseq/assets/image1.png".
+
+
+        // Step 1. Truncate URL to the last slash to obtain the filename.
+        // For example, "../assets/2021-01-01.png" would be truncated to "2021-01-01.png"
         const truncatedUrl = url.substring(url.lastIndexOf('/') + 1);
-        const matchingAsset = listOfAssets.find(asset => asset.path.endsWith(truncatedUrl));
+
+        const matchingAsset = listOfAssets.find(asset => asset.path.endsWith(truncatedUrl)); // Find the asset with the matching path.
+        
         if (matchingAsset) {
             url = matchingAsset.path; // Use the full matching asset path
         }
         url = url.replace(/\\/g, "/");
         return `\\begin{figure}[h!]\\centering\n\n\\includegraphics[width=0.7\\textwidth]{${url}}\n\\end{figure}`;
     });
+
+    // Empty blocks would be converted to the new paragraph command \par.
     
     if (content == "") {
         content = "\\par";
     }
+
+    // Step 2. Apply regex rules to the content.
 
     content = applyRegexRules(content, head, tail, config);
 
@@ -400,7 +414,7 @@ async function explorePageBlocksTree(tree, depth, config) {
     for (const child of tree.children) {
         middle.push(...await explorePageBlocksTree(child, depth + 1, config));
     }
-    middle = applyContentRegexRules(middle, headForMiddle, tailForMiddle, config);
+    middle = parseNumberedList(middle, headForMiddle, tailForMiddle, config);
 
 
     if (tree.children.length != 0 && !content.endsWith("\\par") && !content.endsWith("}")) {
@@ -467,7 +481,7 @@ async function removeNoParEnv(contentArray, config) {
 async function removeDuplicatePar(contentArray) {
     let result = [];
     let str = contentArray.join('\n');
-    str = str.replace(/\\par\s*\\par/g, "\\par\n");
+    str = str.replace(/\\par\s*\\par/g, "\\par\n"); // Two \par in a row are replaced by one \par
     result = str.split('\n');
     return result;
 }
@@ -501,17 +515,22 @@ async function saveToFile(content, filename) {
 async function handleToLatex() {
     console.log("LogseqToLatex working...");
     let config = await reloadUserRules();
+
+    // Step 1. Get the blocks of the current page and convert them into latex code.
+
     let blocks = await logseq.Editor.getCurrentPageBlocksTree();
     let root = {children : blocks, content : ""};
-    let contentArray = await explorePageBlocksTree(root, 0, config);
+    let contentArray = await explorePageBlocksTree(root, 0, config); // contentArray is an array of strings, each string is a line of LaTeX code.
 
+    // Step 2. Deal with certain special formats, such as indentation, tags, collapsed, etc.
 
-    contentArray = await removeDuplicatePar(contentArray);
-    contentArray = await removeNoParEnv(contentArray, config);
-    contentArray = await addLeadingTabs(contentArray, config);
-    contentArray = await removeEmptyLines(contentArray);
+    contentArray = await removeDuplicatePar(contentArray); // Remove duplicate \par
+    contentArray = await removeNoParEnv(contentArray, config); // Remove \par in no_par_env, e.g. in enumerate or itemize
+    contentArray = await addLeadingTabs(contentArray, config); // Add indentation of sections, subsections, etc.
+    contentArray = await removeEmptyLines(contentArray);    // Remove empty lines in markdown
     
-    
+    // Step 3. Save the contentArray to a .tex file.
+
     const currentPage = await logseq.Editor.getCurrentPage();
     const filename = `${currentPage.name}.tex`;
     saveToFile(contentArray.join('\n'), filename);
