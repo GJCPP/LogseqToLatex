@@ -36,8 +36,6 @@ async function setup({ defaultLocale = DEFAULT_LOCALE, builtinTranslations, }) {
     }
 }
 
-
-
 function cleanUp() {
     const appContainer = parent.document.getElementById("app-container");
 
@@ -98,11 +96,14 @@ async function getUserRules() {
     protectEnv = config.protect_env.map(env => ({
         range: new RegExp(env.range, 'g')
     }));
-    let groupOfRules = config.number_list_rules;
-    let contentRules = [];
-    for (const ruleGroup in groupOfRules) {
-        for (const rule of groupOfRules[ruleGroup]) {
-            contentRules.push({
+
+    // Deal with the rule for number lists
+
+    let numberListConfig = config.number_list_rules;
+    let numberListRule = [];
+    for (const ruleGroup in numberListConfig) {
+        for (const rule of numberListConfig[ruleGroup]) {
+            numberListRule.push({
                 trigger: new RegExp(`${rule.trigger}`, 'g'),
                 repl: rule.replacement,
                 head: rule.head,
@@ -113,7 +114,7 @@ async function getUserRules() {
             });
         }
     }
-    return { regexRules: ret, numberListRule: contentRules, noIndentEnv: noIndentEnv, noParEnv: noParEnv, protectEnv: protectEnv };
+    return { regexRules: ret, numberListRule: numberListRule, noIndentEnv: noIndentEnv, noParEnv: noParEnv, protectEnv: protectEnv };
 }
 
 async function reloadUserRules() {
@@ -133,10 +134,13 @@ function getProtectedRanges(content, config) {
             const index = args[args.length - 2];
             const length = match.length;
             if (isProtected(index, length, protectedRanges)) {
-                return match; // Keep the match unchanged if it's protected
+                return match; // Do nothing if the match it's already protected earlier
             }
             protectedRanges.push({ start: index, end: index + length });
             return match; // Keep the match unchanged in the content
+
+            // Note that here is an implicit assumption: the start and end of a protected range do not overlapped with each other.
+            // This assumption works fine now. We might change the implementation if it is found to be buggy.
         });
     }
     return protectedRanges;
@@ -154,7 +158,7 @@ function isProtected(index, length, protectedRanges) {
 function matchNonProtected(regex, content, protectedRanges) {
     let match;
     while ((match = regex.exec(content)) !== null) {
-        const index = match.index;
+        const index = match.index; // The index of the first match
         const length = match[0].length;
         if (!isProtected(index, length, protectedRanges)) {
             return match;
@@ -170,19 +174,20 @@ async function addLeadingTabs(contentArray, config) {
     let inSubSection = false;
     let noIndent = 0;
     for (let i = 0; i < contentArray.length; i++) {
-        let line = contentArray[i];
+        let line = contentArray[i]; // The current line of the content
         let protectedRanges = getProtectedRanges(line, config);
         let match;
         for (const env of config.noIndentEnv) {
-            if (env.start.test(line)) {
-                noIndent++;
+            if (env.start.test(line)) { // Test whether the current line is the start of a no-indent environment by testing whether the "start" regex could be matched.
+                noIndent++; // Increase the noIndent counter. For example, each time a \begin{minted} is found, the counter is increased by 1; each time a \end{minted} is found, the counter is decreased by 1.
                 break;
             }
         }
         if (line.trim().startsWith("\\chapter")) {
             indent = 0;
         } else if (line.trim().startsWith('\\section')) {
-            if (inSection) {
+            if (inSection) { 
+                // Note to define a section, we only need "\section{...}", not "\begin{section}...\end{section}". Therefore, we use the variable "inSection" to check whether we are in a section. If so, we add a blank line to separate sections.
                 result.push(""); // Add a blank line to separate sections
             }
             result.push(`${line}`);
@@ -239,11 +244,13 @@ function applyRegexRules(content, head, tail, config) {
     for (const rule of config.regexRules) {
         let lineFront = ""; // The content that should be added at the beginning of the current line
         let lineBack = "";  // The content that should be added at the end of the current line
-        let lastIndex = 0;
+        let prevIndex = 0; // The index of the previous match
         let newContent = '';
         content.replace(rule.trigger, (match, ...args) => {
-            // console.log("content", content);
+
+            // console.log("content", content); // Maybe useful for debugging. But the output would be extremely long.
             // console.log("match", match);
+
             const index = args[args.length - 2];
 
             // Check if the current match is within any protected range
@@ -251,12 +258,13 @@ function applyRegexRules(content, head, tail, config) {
 
             if (isProtectedRange && !rule.overwrite) {
                 // If the content is protected and the protection is not overwritten, don't apply the rule
-                newContent += content.slice(lastIndex, index + match.length);
-                lastIndex = index + match.length;
+                newContent += content.slice(prevIndex , index + match.length);
+                prevIndex = index + match.length;
                 return match;
             }
             
-            newContent += content.slice(lastIndex, index);
+            newContent += content.slice(prevIndex , index); // Add the content after the previous match and before the match
+
             // Handle replacement, considering $1, $2, etc. in the string
             let replacement = rule.repl;
             if (replacement || replacement === "") {
@@ -265,9 +273,10 @@ function applyRegexRules(content, head, tail, config) {
                 replacement = match;
             }
             
-            // Add head and tail if they exist
+            // Add head and tail if they exists
+            // Here we ensure the maximal generality: We can use regex rules for heads, tails, lineFront, lineBack. (But usually we only need a few simple strings, not regex patterns.)
             if (rule.head && rule.head.length > 0) {
-                head.push(rule.head.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
+                head.push(rule.head.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '')); // Capture things like "$1","$2", etc. 'n' is the number in the $n. "args[n - 1] || ''" means if the $n is not found, use an empty string.
             }
             if (rule.tail && rule.tail.length > 0) {
                 tail.unshift(rule.tail.replace(/\$(\d+)/g, (_, n) => args[n - 1] || ''));
@@ -279,13 +288,13 @@ function applyRegexRules(content, head, tail, config) {
                 lineBack += rule.lineEnd.replace(/\$(\d+)/g, (_, n) => args[n - 1] || '');
             }
             newContent += replacement;
-            lastIndex = index + match.length;
+            prevIndex = index + match.length;
             
             return match; // This return value is not used
         });
         
-        // Add any remaining text
-        newContent += content.slice(lastIndex);
+        // Add remaining text after the last match
+        newContent += content.slice(prevIndex);
         if (lineFront.length > 0 || lineBack.length > 0) {
             newContent = newContent.trim();
         }
@@ -304,18 +313,18 @@ function parseNumberedList(contentArray, head, tail, config) {
         for (const content of contentArray) {
             let lineFront = ""; // The content that should be added at the beginning of each line
             let lineBack = "";  // The content that should be added at the end of each line
-            let lastIndex = 0; // The index of last match
+            let prevIndex = 0; // The index of the previous match
             let newContent = ''; // The new content after applying the rule
             let protectedRanges = getProtectedRanges(content, config); // Some content are protected from being modified, including mathmode formulas, codeblocks, etc.
             content.replace(rule.trigger, (match, ...args) => {
                 const index = args[args.length - 2];
-                newContent += content.slice(lastIndex, index);
+                newContent += content.slice(prevIndex, index);
                 // Check if the current match is within any protected range
                 const isProtectedRange = isProtected(index, match.length, protectedRanges);
                 // If protected, don't apply the rule
                 if (isProtectedRange && !rule.overwrite) {
                     newContent += content.slice(index, index + match.length);
-                    lastIndex = index + match.length;
+                    prevIndex = index + match.length;
                     return match;
                 }
 
@@ -349,12 +358,12 @@ function parseNumberedList(contentArray, head, tail, config) {
                 }
                 newContent += replacement;
                 matched = true;
-                lastIndex = index + match.length;
+                prevIndex = index + match.length;
                 return match; // This return value is not used
             });
         
             // Add any remaining text
-            newContent += content.slice(lastIndex);
+            newContent += content.slice(prevIndex);
             if (lineFront.length > 0 || lineBack.length > 0) {
                 newContent = newContent.trim();
             }
@@ -371,7 +380,7 @@ function parseNumberedList(contentArray, head, tail, config) {
 }
 
 async function explorePageBlocksTree(tree, depth, config) { // Blocks of Logseq are organized in a tree structure. This function recursively explores the tree and converts each block to LaTeX.
-    let result = [];
+    let result = []; // An array of strings, each string is a line of LaTeX code.
     let head = []; // Head is the content that should be added before the current block, e.g. "\begin{enumerate}"
     let tail = []; // Tail is the content that should be added after the current block, e.g. "\end{enumerate}"
 
@@ -408,27 +417,20 @@ async function explorePageBlocksTree(tree, depth, config) { // Blocks of Logseq 
 
     content = applyRegexRules(content, head, tail, config);
 
-    let middle = [];
+    let middle = []; // middle is the content of the children of the current block
     let headForMiddle = [];
     let tailForMiddle = [];
     for (const child of tree.children) {
-        middle.push(...await explorePageBlocksTree(child, depth + 1, config));
+        middle.push(...await explorePageBlocksTree(child, depth + 1, config)); // Push subblocks to be explore.
     }
     middle = parseNumberedList(middle, headForMiddle, tailForMiddle, config);
 
-
-    if (tree.children.length != 0 && !content.endsWith("\\par") && !content.endsWith("}")) {
-        // content += "\\par";
-    }
     result.push(...head);
     result.push(content);
     result.push(...headForMiddle);
     result.push(...middle);
     result.push(...tailForMiddle);
     result.push(...tail);
-    if (tree.children.length != 0 && !result[result.length - 1].endsWith("\\par") && !result[result.length - 1].endsWith("}")) {
-        // result[result.length - 1] += "\\par";
-    }
 
     // Remove empty lines at the start and end of the result
     while (result.length > 0 && result[0].trim() === '') {
