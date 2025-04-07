@@ -2,6 +2,9 @@
 
 Generate latex code from current logseq page.
 
+> :warning: This plugin has a better replacement. See [logseq-pandoc-plugin](https://github.com/GJCPP/logseq-pandoc-plugin).
+
+
 ## Demo
 
 ![](./demo.gif)
